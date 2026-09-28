@@ -35,12 +35,10 @@ La workstation vive en un **Kaggle Dataset**. Cada runtime nuevo:
 
 ```
 Teléfono / navegador
-        │  HTTPS
+        │  HTTPS (recomendado: túnel en raíz, ej. trycloudflare.com)
+        │  (el Jupyter Proxy solo sirve para probe HTTP; la UI SPA falla en subpath)
         ▼
-Kaggle Jupyter Proxy  (kkb-production…/proxy/proxy/<PORT>)
-        │
-        ▼
-OpenCode Web  (local al runtime, default :4096)
+OpenCode Web  (127.0.0.1:4096 en el runtime)
         │
         ▼
 Kaggle Runtime  (efímero)
@@ -49,8 +47,8 @@ Kaggle Runtime  (efímero)
 OpenCode Workstation
         │
         ├── /kaggle/working/opencode_cloud/     ← store local temporal
-        │        ├── workspace/
-        │        ├── state/          (OpenCode data + config)
+        │        ├── workspace/      ← ABRIR ESTE PROYECTO EN EL TELÉFONO
+        │        ├── state/          (OpenCode data + config + bin opcional)
         │        ├── config/
         │        ├── checkpoints/
         │        ├── metadata/
@@ -201,40 +199,83 @@ No hay `.git-credentials` persistente en el workspace ni token en el Dataset.
 
 ## OpenCode Web y acceso desde el teléfono
 
-OpenCode Web escucha **localmente** en el runtime (default puerto `4096`, configurable vía `OPENCODE_PORT`).
+OpenCode Web escucha **localmente** en el runtime (default puerto `4096`).
 
-El acceso externo usa el **Kaggle Jupyter Proxy**:
+### Importante: el proxy de Kaggle no alcanza para la UI
+
+El **Kaggle Jupyter Proxy** (`/k/.../proxy/proxy/<PORT>`) solo garantiza HTTP básico.
+OpenCode Web es una SPA con assets en `/`, WebSocket y SSE: **bajo ese subpath la UI suele verse negra o sin respuesta**.
+
+| Enfoque | ¿UI móvil usable? |
+|---|---|
+| Solo Jupyter Proxy | No fiable (HTTP OK ≠ UI OK) |
+| **Cloudflare quick tunnel** (u otro túnel en raíz) | **Sí** — URL en raíz `https://….trycloudflare.com` |
+
+### Método recomendado (móvil)
+
+1. Bootstrap de la workstation en el notebook Kaggle.
+2. OpenCode en `127.0.0.1:4096`.
+3. Túnel en raíz, por ejemplo:
+   ```bash
+   cloudflared tunnel --url http://127.0.0.1:4096
+   ```
+4. Abrí en el teléfono la URL que imprime el túnel (no la del proxy de Kaggle).
+5. La URL del túnel **cambia** en cada ejecución (quick tunnel) y solo vale mientras el runtime esté vivo.
+
+Opcional: Secret `OPENCODE_SERVER_PASSWORD` para basic auth del servidor.
+
+### Dónde crear / abrir el proyecto (persistencia)
+
+Todo el trabajo que deba sobrevivir al runtime va aquí:
+
+```text
+/kaggle/working/opencode_cloud/workspace
+```
+
+Esa carpeta es la que el checkpoint publica al **Kaggle Dataset**.
+
+| Ruta | ¿Usar? |
+|---|---|
+| `/kaggle/working/opencode_cloud/workspace` | **Sí** — proyecto de la workstation |
+| `/kaggle/working/opencode_cloud/projects/…` | Sí — proyectos extra bajo el store |
+| `~/.cache`, `~/.config`, `~/.npm`, home | **No** — no es la persistencia de la workstation |
+
+#### Pasos en el teléfono (OpenCode Web)
+
+1. Abrí la URL del túnel (`https://….trycloudflare.com`).
+2. En **Abrir proyecto** / buscador de carpetas, andá a:
+   ```text
+   /kaggle/working/opencode_cloud/workspace
+   ```
+   (o navegá: `/` → `kaggle` → `working` → `opencode_cloud` → `workspace`).
+3. Confirmá **Abrir proyecto**.
+4. Tocá **Nueva sesión** y trabajá ahí.
+
+Los archivos del `workspace` se incluyen en los checkpoints hacia el Dataset.
+
+### Jupyter Proxy (solo diagnóstico)
+
+El bootstrap puede construir y probar:
 
 ```text
 https://kkb-production.jupyter-proxy.kaggle.net/k/<kernel>/<token>/proxy/proxy/<PORT>
 ```
 
-La URL se construye con `jupyter_server.serverapp.list_running_servers()` → `base_url`.
-**No se inventa.** Antes de marcar `available` / `proxy_http_ok`, el bootstrap hace un **HTTP GET** a esa URL pública.
-
 | Concepto | Significado |
 |---|---|
 | `opencode_listening` | TCP local OK |
-| `proxy_url_generated` | URL construida |
-| `proxy_reachable` / `available` | Probe HTTP al proxy OK |
-| `status=proxy_http_ok` | Solo conectividad HTTP — **no** prueba UI, WebSocket ni streaming |
+| `proxy_http_ok` | El proxy respondió HTTP — **no** valida UI ni WebSocket |
 
-La URL contiene un token de sesión Jupyter. **Permitido** mostrarla al usuario. **Prohibido** guardarla en Dataset, checkpoints, Git o logs persistentes (solo versión redactada en logs).
-
-### Cómo usarlo
-
-1. Ejecutá bootstrap en el notebook Kaggle.
-2. Si `web_access.available` es true, copiá `web_access.url` y abrila en el teléfono.
-3. Si el kernel se reinicia: restore del Dataset + **nueva URL** (la anterior no sirve).
+Esa URL lleva token de sesión Jupyter: se puede mostrar al usuario; **no** guardarla en Dataset, Git ni logs persistentes.
 
 ### Lifecycle (runtime)
 
 ```text
-START → OpenCode + Watchdog + CheckpointScheduler
-  Watchdog: reinicia OpenCode y revalida proxy (no publica Dataset)
+START → OpenCode + (túnel opcional) + Watchdog + CheckpointScheduler
+  Watchdog: reinicia OpenCode (no publica Dataset)
   Scheduler: checkpoints locales/remotos según política
 SHUTDOWN (SIGINT/SIGTERM o info["shutdown"]())
-  → stop watchdog → checkpoint final Dataset → stop scheduler → stop OpenCode
+  → stop watchdog → checkpoint final Dataset → stop scheduler → stop OpenCode / túnel
 ```
 
 Shutdown es **idempotente**.
