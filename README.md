@@ -1,6 +1,6 @@
 # OpenCode Cloud Workstation
 
-**Workstation de desarrollo persistente y reanudable para OpenCode sobre Kaggle.**
+**Workstation de desarrollo persistente y reanudable para OpenCode sobre Kaggle. Proyecto de Marcelo.**
 
 El runtime es reemplazable; la workstation no.
 
