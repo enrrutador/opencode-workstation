@@ -18,6 +18,11 @@ class RuntimePaths:
     home: Path
     cloud_root: Path
     workspace: Path
+    xdg_root: Path
+    xdg_data: Path
+    xdg_config: Path
+    xdg_state: Path
+    xdg_cache: Path
     opencode_data: Path
     opencode_config: Path
     checkpoints: Path
@@ -42,13 +47,23 @@ def get_paths(runtime: Optional[str] = None) -> RuntimePaths:
         home = Path.home()
 
     cloud_root = working / "opencode_cloud"
+    xdg_root = cloud_root / "xdg"
+    xdg_data = xdg_root / "share"
+    xdg_config = xdg_root / "config"
+    xdg_state = xdg_root / "state"
+    xdg_cache = xdg_root / "cache"
     return RuntimePaths(
         working=working,
         home=home,
         cloud_root=cloud_root,
         workspace=cloud_root / "workspace",
-        opencode_data=cloud_root / "state" / "opencode-data",
-        opencode_config=cloud_root / "config",
+        xdg_root=xdg_root,
+        xdg_data=xdg_data,
+        xdg_config=xdg_config,
+        xdg_state=xdg_state,
+        xdg_cache=xdg_cache,
+        opencode_data=xdg_data / "opencode",
+        opencode_config=xdg_config,
         checkpoints=cloud_root / "checkpoints",
         metadata=cloud_root / "metadata",
         logs=cloud_root / "logs",
@@ -60,6 +75,11 @@ def ensure_dirs(paths: RuntimePaths) -> None:
     for p in (
         paths.cloud_root,
         paths.workspace,
+        paths.xdg_root,
+        paths.xdg_data,
+        paths.xdg_config,
+        paths.xdg_state,
+        paths.xdg_cache,
         paths.opencode_data,
         paths.opencode_config,
         paths.checkpoints,

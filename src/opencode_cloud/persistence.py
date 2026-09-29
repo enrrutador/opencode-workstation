@@ -212,7 +212,7 @@ class PersistentStore:
         self.ensure_structure()
         (self.root / self.MARKER_FILE).write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-    def save_local(self, *, opencode_data: Path, opencode_config: Path, workspace: Path, extra_meta: Optional[dict] = None) -> dict:
+    def save_local(self, *, opencode_data: Path, opencode_config: Path, workspace: Path, xdg_root: Optional[Path] = None, extra_meta: Optional[dict] = None) -> dict:
         self.ensure_structure()
 
         def _copy(src: Path, dst: Path) -> None:
@@ -226,6 +226,8 @@ class PersistentStore:
         _copy(opencode_config, self.state / "config")
         _copy(opencode_config, self.config)
         _copy(workspace, self.workspace)
+        if xdg_root is not None:
+            _copy(xdg_root, self.state / "xdg")
         meta = {"saved_at": datetime.now(timezone.utc).isoformat(), "kind": "local_checkpoint"}
         if extra_meta:
             meta.update(extra_meta)
@@ -234,7 +236,7 @@ class PersistentStore:
         self.write_marker(extra_meta)
         return meta
 
-    def restore_to(self, *, opencode_data: Path, opencode_config: Path, workspace: Path, source: Optional[Path] = None) -> bool:
+    def restore_to(self, *, opencode_data: Path, opencode_config: Path, workspace: Path, xdg_root: Optional[Path] = None, source: Optional[Path] = None) -> bool:
         base = Path(source) if source is not None else self.root
         restored_any = False
 
@@ -261,6 +263,13 @@ class PersistentStore:
             restored_any = True
         if _restore(base / "workspace", workspace):
             restored_any = True
+        if xdg_root is not None:
+            # Prefer new location state/xdg, fallback to legacy xdg at root
+            xdg_src = base / "state" / "xdg"
+            if not xdg_src.exists():
+                xdg_src = base / "xdg"
+            if _restore(xdg_src, xdg_root):
+                restored_any = True
         return restored_any
 
     def prepare_staging(self) -> Path:

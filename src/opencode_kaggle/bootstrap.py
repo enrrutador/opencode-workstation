@@ -93,7 +93,15 @@ def bootstrap(
         opencode_data=paths.opencode_data,
         opencode_config=paths.opencode_config,
         workspace=paths.workspace,
+        xdg_root=paths.xdg_root,
     )
+
+    # Configure XDG environment for OpenCode before it starts
+    os.environ["XDG_DATA_HOME"] = str(paths.xdg_data)
+    os.environ["XDG_CONFIG_HOME"] = str(paths.xdg_config)
+    os.environ["XDG_STATE_HOME"] = str(paths.xdg_state)
+    os.environ["XDG_CACHE_HOME"] = str(paths.xdg_cache)
+    os.environ["OPENCODE_DATA"] = str(paths.opencode_data)
 
     node_ver = ensure_node()
     _log(f"Node: {node_ver}")
@@ -202,6 +210,7 @@ def bootstrap(
             opencode_data=paths.opencode_data,
             opencode_config=paths.opencode_config,
             workspace=paths.workspace,
+            xdg_root=paths.xdg_root,
             extra_meta=extra,
         )
         ckpt.record_local_checkpoint()
