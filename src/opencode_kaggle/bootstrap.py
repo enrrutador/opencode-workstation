@@ -62,7 +62,14 @@ def bootstrap(
     _log(f"Working: {paths.working}")
     _log(f"Cloud root: {paths.cloud_root}")
 
-    nvidia_key = load_required_secret("NVIDIA_API_KEY")
+    # NVIDIA_API_KEY is optional: without it the workstation still starts,
+    # but no NVIDIA models will be available.
+    nvidia_key = load_secret("NVIDIA_API_KEY") or ""
+    if not nvidia_key:
+        _log("AVISO: falta secret NVIDIA_API_KEY — continuo sin modelos NVIDIA")
+    else:
+        _log("NVIDIA_API_KEY: presente")
+
     github_repo = load_secret("GITHUB_REPO")
     _ = load_secret("GITHUB_TOKEN")
     server_password = load_secret("OPENCODE_SERVER_PASSWORD") or ""
@@ -138,7 +145,8 @@ def bootstrap(
             _log(f"GitHub setup skipped: {e}")
 
     env = os.environ.copy()
-    env["NVIDIA_API_KEY"] = nvidia_key
+    if nvidia_key:
+        env["NVIDIA_API_KEY"] = nvidia_key
     if server_password:
         env["OPENCODE_SERVER_PASSWORD"] = server_password
         env["OPENCODE_SERVER_USERNAME"] = server_username
