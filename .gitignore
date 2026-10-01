@@ -7,12 +7,12 @@ git_credentials
 secrets/
 *.tmp
 
-# Runtime / local state
+# Runtime / local state (rooted: must not match src/opencode_cloud/ package)
 *.pid
 *.lock
 *.log
-opencode_runtime/
-opencode_cloud/
+/opencode_runtime/
+/opencode_cloud/
 
 # OS
 .DS_Store

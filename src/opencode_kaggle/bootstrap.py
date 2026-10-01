@@ -83,6 +83,29 @@ def bootstrap(
 
     persistence = KagglePersistence(did, paths.working)
 
+    # Never wipe live data while an old server still holds open files.
+    # Wiping store.root (which contains live xdg/) while PID on port 4096
+    # runs leaves it on "(deleted)" inodes: disk and live diverge and new
+    # chats never persist. Happens on cell re-run after kernel restart
+    # while old opencode survived.
+    try:
+        if is_port_open("127.0.0.1", opencode_port, timeout=1.0):
+            return {
+                "ok": False,
+                "status": "OLD_SERVER_RUNNING",
+                "runtime": "kaggle",
+                "recovery": "REFUSED",
+                "message": (
+                    f"Port {opencode_port} already open: old OpenCode still running. "
+                    "Do NOT re-run bootstrap: restart kernel or kill old "
+                    "opencode/cloudflared PIDs first, otherwise live DB diverges "
+                    "to (deleted) inodes and sessions are lost."
+                ),
+                "opencode_port": opencode_port,
+            }
+    except Exception:
+        pass
+
     recovery = persistence.recover_into(store)
     _log(f"Recovery: {recovery.status.value} — {recovery.message}")
 
@@ -101,6 +124,24 @@ def bootstrap(
         workspace=paths.workspace,
         xdg_root=paths.xdg_root,
     )
+
+    # Unify orphan sessions to the latest project of the same worktree.
+    # Each fresh bootstrap can create a new random project_id; the web API
+    # lists only the current project, so old chats look "empty". Re-assign
+    # them so they reappear instantly after restart.
+    try:
+        from opencode_cloud.persistence import unify_opencode_sessions_to_latest_project
+
+        for _db in (paths.opencode_data / "opencode.db",):
+            try:
+                res = unify_opencode_sessions_to_latest_project(_db)
+                if res.get("migrated"):
+                    _log(f"Sessions unified to latest project: {res}")
+                break
+            except Exception as e:
+                _log(f"Session unify skipped: {type(e).__name__}")
+    except Exception:
+        pass
 
     os.environ["XDG_DATA_HOME"] = str(paths.xdg_data)
     os.environ["XDG_CONFIG_HOME"] = str(paths.xdg_config)

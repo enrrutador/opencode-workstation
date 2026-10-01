@@ -367,15 +367,13 @@ class PersistentStore:
             shutil.copytree(src, dst)
             return True
 
-        if _restore(base / "state" / "opencode", opencode_data):
-            restored_any = True
-        cfg_src = base / "state" / "config"
-        if not cfg_src.exists():
-            cfg_src = base / "config"
-        if _restore(cfg_src, opencode_config):
-            restored_any = True
-        if _restore(base / "workspace", workspace):
-            restored_any = True
+        # Canonical source for live xdg is state/xdg (it already contains
+        # share/opencode/opencode.db). Legacy datasets may only have
+        # state/opencode. Restore xdg FIRST, then fill opencode_data from the
+        # legacy location ONLY if xdg did not already provide it. The old
+        # order (opencode first, xdg second) silently overwrote the first
+        # copy, so whichever was stale won depending on timing.
+        xdg_restored_opencode_db = False
         if xdg_root is not None:
             # Prefer new location state/xdg, fallback to legacy xdg at root
             xdg_src = base / "state" / "xdg"
@@ -383,6 +381,20 @@ class PersistentStore:
                 xdg_src = base / "xdg"
             if _restore(xdg_src, xdg_root):
                 restored_any = True
+                try:
+                    xdg_restored_opencode_db = (Path(xdg_root) / "share" / "opencode" / "opencode.db").is_file()
+                except Exception:
+                    xdg_restored_opencode_db = False
+        if not xdg_restored_opencode_db:
+            if _restore(base / "state" / "opencode", opencode_data):
+                restored_any = True
+        cfg_src = base / "state" / "config"
+        if not cfg_src.exists():
+            cfg_src = base / "config"
+        if _restore(cfg_src, opencode_config):
+            restored_any = True
+        if _restore(base / "workspace", workspace):
+            restored_any = True
         return restored_any
 
     def prepare_staging(self) -> Path:
@@ -404,7 +416,10 @@ class PersistentStore:
                     ignored.add(n)
             return ignored
 
-        for name in ("workspace", "state", "config", "checkpoints", "logs", "metadata", "xdg"):
+        # NOTE: do NOT stage live root/xdg. The backup copy state/xdg already
+        # contains it; staging both duplicated opencode.db (3x) and let
+        # live/stale copies diverge. Stage only backup + workspace.
+        for name in ("workspace", "state", "config", "checkpoints", "logs", "metadata"):
             src = self.root / name
             if src.exists():
                 shutil.copytree(
