@@ -366,7 +366,8 @@ def test_checkpoint_significant_change_eligible_after_cooldown():
     mgr = CheckpointManager()
     mgr.mark_significant_change()
     mgr.state.last_remote_publish = 0.0
-    should, reason = mgr.should_publish_remote(now=400.0)
+    # Cooldown actual 900s (15min): 400 ya no alcanza, usar 1000.
+    should, reason = mgr.should_publish_remote(now=1000.0)
     assert should
     assert reason == PublishReason.COOLDOWN_AND_CHANGES
 

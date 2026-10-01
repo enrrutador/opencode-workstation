@@ -159,7 +159,7 @@ def test_checkpoint_manager_gates_remote_publish(env):
     mgr.mark_significant_change()
     should, reason = mgr.should_publish_remote(now=10.0)
     assert not should
-    should, reason = mgr.should_publish_remote(now=400.0)
+    should, reason = mgr.should_publish_remote(now=1000.0)
     assert should
     assert reason == PublishReason.COOLDOWN_AND_CHANGES
 

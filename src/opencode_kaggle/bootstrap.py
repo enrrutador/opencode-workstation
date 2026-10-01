@@ -62,14 +62,13 @@ def bootstrap(
     _log(f"Working: {paths.working}")
     _log(f"Cloud root: {paths.cloud_root}")
 
-    # NVIDIA_API_KEY is optional: without it the workstation still starts,
-    # but no NVIDIA models will be available.
+    # NVIDIA_API_KEY es opcional: sin ella arranca igual, sin modelos NVIDIA.
+    # (merge con origin/main 67b6550)
     nvidia_key = load_secret("NVIDIA_API_KEY") or ""
     if not nvidia_key:
         _log("AVISO: falta secret NVIDIA_API_KEY — continuo sin modelos NVIDIA")
     else:
         _log("NVIDIA_API_KEY: presente")
-
     github_repo = load_secret("GITHUB_REPO")
     _ = load_secret("GITHUB_TOKEN")
     server_password = load_secret("OPENCODE_SERVER_PASSWORD") or ""
@@ -108,13 +107,14 @@ def bootstrap(
     os.environ["XDG_STATE_HOME"] = str(paths.xdg_state)
     os.environ["XDG_CACHE_HOME"] = str(paths.xdg_cache)
     os.environ["OPENCODE_DATA"] = str(paths.opencode_data)
+    os.environ["OPENCODE_DATA_DIR"] = str(paths.opencode_data)
 
     node_ver = ensure_node()
     _log(f"Node: {node_ver}")
     opencode_bin = ensure_opencode()
     _log(f"OpenCode: {opencode_bin}")
 
-    models = fetch_models(nvidia_key)
+    models = fetch_models(nvidia_key) if nvidia_key else []
     preferred = ""
     meta_path = store.metadata_dir / "nvidia.json"
     if meta_path.exists():
@@ -135,6 +135,12 @@ def bootstrap(
     cfg_path = paths.opencode_config / "opencode.json"
     write_opencode_config(cfg_path, model=selected_model)
     _log(f"Config: {cfg_path}")
+
+    try:
+        init_repo(paths.workspace)
+        _log(f"Workspace git ready: {paths.workspace}")
+    except Exception as e:
+        _log(f"Workspace git init skipped: {e}")
 
     if github_repo:
         try:
@@ -245,7 +251,7 @@ def bootstrap(
             )
 
     ckpt = CheckpointManager(policy or CheckpointPolicy())
-    ckpt.set_baseline_fingerprint(paths.workspace)
+    ckpt.observe_paths(paths.workspace, paths.opencode_data)
     checkpoint_lock = threading.Lock()
 
     def local_checkpoint(extra: Optional[dict] = None) -> dict:
@@ -257,7 +263,7 @@ def bootstrap(
             extra_meta=extra,
         )
         ckpt.record_local_checkpoint()
-        ckpt.set_baseline_fingerprint(paths.workspace)
+        ckpt.observe_paths(paths.workspace, paths.opencode_data)
         return meta
 
     def remote_checkpoint(reason: PublishReason, notes: str = "") -> dict:
@@ -350,7 +356,7 @@ def bootstrap(
 
     scheduler = CheckpointScheduler(
         ckpt,
-        observe_fn=lambda: ckpt.observe_workspace(paths.workspace),
+        observe_fn=lambda: ckpt.observe_paths(paths.workspace, paths.opencode_data),
         local_fn=lambda: local_checkpoint({"trigger": "scheduler"}),
         remote_fn=lambda reason: remote_checkpoint(reason),
         lock=checkpoint_lock,

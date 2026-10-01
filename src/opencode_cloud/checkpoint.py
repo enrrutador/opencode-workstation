@@ -23,7 +23,7 @@ from typing import Optional
 
 # Policy defaults (RPO target under normal operation)
 LOCAL_CHECKPOINT_INTERVAL = 60  # seconds between local observations/saves
-REMOTE_CHECKPOINT_MIN_INTERVAL = 300  # 5 minutes between normal remote publishes
+REMOTE_CHECKPOINT_MIN_INTERVAL = 900  # 15 minutes between normal remote publishes
 MIN_PUBLISH_INTERVAL_SECONDS = REMOTE_CHECKPOINT_MIN_INTERVAL  # alias
 
 
@@ -126,26 +126,46 @@ class CheckpointManager:
 
     def observe_workspace(self, workspace: Path) -> bool:
         """Compare fingerprint; return True if significant change recorded."""
-        result = workspace_fingerprint(
-            workspace, max_files=self.policy.max_fingerprint_files
-        )
-        self.state.fingerprint_incomplete = result.incomplete
+        return self.observe_paths(workspace)
+
+    def observe_paths(self, *paths: Path) -> bool:
+        import hashlib
+        h = hashlib.sha256()
+        incomplete = False
+        for root in paths:
+            root = Path(root)
+            if not root.exists():
+                h.update(b"missing:")
+                h.update(str(root).encode())
+                continue
+            result = workspace_fingerprint(root, max_files=self.policy.max_fingerprint_files)
+            incomplete = incomplete or result.incomplete
+            h.update(result.digest.encode())
+        digest = h.hexdigest()
+        self.state.fingerprint_incomplete = incomplete
         if not self.state.last_workspace_fingerprint:
-            self.state.last_workspace_fingerprint = result.digest
+            self.state.last_workspace_fingerprint = digest
             return False
-        if result.digest != self.state.last_workspace_fingerprint:
-            self.state.last_workspace_fingerprint = result.digest
+        if digest != self.state.last_workspace_fingerprint:
+            self.state.last_workspace_fingerprint = digest
             self.mark_significant_change()
             return True
         return False
 
     def set_baseline_fingerprint(self, workspace: Path) -> str:
+        import hashlib
+
         result = workspace_fingerprint(
             workspace, max_files=self.policy.max_fingerprint_files
         )
-        self.state.last_workspace_fingerprint = result.digest
+        # Consistente con observe_paths(): hash del digest, no digest crudo.
+        # Si no, baseline nunca iguala y siempre detecta "changed".
+        h = hashlib.sha256()
+        h.update(result.digest.encode())
+        digest = h.hexdigest()
+        self.state.last_workspace_fingerprint = digest
         self.state.fingerprint_incomplete = result.incomplete
-        return result.digest
+        return digest
 
     def should_publish_remote(
         self,
