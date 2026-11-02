@@ -320,6 +320,49 @@ def test_recovery_restored_from_valid_dataset():
         assert (store.workspace / "code.py").exists()
 
 
+def test_recovery_integrity_mismatch_restores_with_warnings():
+    # RESTORED_WITH_WARNINGS: un mismatch de integridad NO aborta la
+    # recuperacion (esa era la intencion del commit 99ae57d, que en vez
+    # de implementarla vacio persistence.py y bootstrap.py).
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        from opencode_cloud.persistence import (
+            KagglePersistence,
+            PersistentStore,
+            RecoveryStatus,
+            build_integrity_manifest,
+        )
+
+        store = PersistentStore(tmp / "opencode_cloud")
+        store.ensure_structure()
+
+        download = tmp / "dl"
+        download.mkdir()
+        (download / "workstation.json").write_text(
+            json.dumps({"kind": "opencode-cloud-workstation", "version": "5.0.0"}),
+            encoding="utf-8",
+        )
+        (download / "workspace").mkdir()
+        (download / "workspace" / "code.py").write_text("print(1)", encoding="utf-8")
+        (download / "state").mkdir()
+
+        manifest = build_integrity_manifest(download)
+        (download / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        # Tamper DESPUES de generado el manifest: integrity check falla,
+        # pero el estado restaurado es utilizable.
+        (download / "workspace" / "code.py").write_text("print('tampered')", encoding="utf-8")
+
+        kp = KagglePersistence("owner/ds", tmp)
+        mock_kh = MagicMock()
+        mock_kh.dataset_download.return_value = str(download)
+
+        with patch.object(kp, "_kagglehub", return_value=mock_kh):
+            result = kp.recover_into(store)
+        assert result.status == RecoveryStatus.RESTORED_WITH_WARNINGS
+        assert result.details.get("status") == "integrity_failed"
+        assert (store.workspace / "code.py").exists()
+
+
 def test_recovery_failed_on_corrupt():
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)

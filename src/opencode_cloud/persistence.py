@@ -18,6 +18,7 @@ from typing import Any, Optional
 
 class RecoveryStatus(str, Enum):
     RESTORED_FROM_DATASET = "RESTORED_FROM_DATASET"
+    RESTORED_WITH_WARNINGS = "RESTORED_WITH_WARNINGS"
     FRESH_WORKSTATION = "FRESH_WORKSTATION"
     RESTORE_FAILED = "RESTORE_FAILED"
 
@@ -539,7 +540,15 @@ class KagglePersistence:
                 return RecoveryResult(status=RecoveryStatus.RESTORE_FAILED, dataset_id=self.dataset_id, message="Copy completed but workstation validation failed")
             integrity = validate_integrity_manifest(store.root)
             if not integrity.get("ok") and integrity.get("status") != "no_manifest":
-                return RecoveryResult(status=RecoveryStatus.RESTORE_FAILED, dataset_id=self.dataset_id, message=f"Integrity check failed: {integrity.get('message')}", details=integrity)
+                # RESTORED_WITH_WARNINGS: un mismatch de integridad NO
+                # aborta la recuperacion. El estado restaurado sirve (la
+                # copia ya valido el marcador de workstation); perder toda
+                # la workstation por archivos que difieren -- p. ej. los que
+                # Kaggle strippea al descargar el Dataset -- es estrictamente
+                # peor. El detalle del mismatch queda en details.
+                warn_details = dict(integrity)
+                warn_details["path"] = str(download_path)
+                return RecoveryResult(status=RecoveryStatus.RESTORED_WITH_WARNINGS, dataset_id=self.dataset_id, message=f"Restored from {download_path} with integrity warnings: {integrity.get('message')}", details=warn_details)
             return RecoveryResult(status=RecoveryStatus.RESTORED_FROM_DATASET, dataset_id=self.dataset_id, message=f"Restored from {download_path}", details={"path": str(download_path)})
         except Exception as e:
             return RecoveryResult(status=RecoveryStatus.RESTORE_FAILED, dataset_id=self.dataset_id, message=f"Restore copy failed: {e}")
