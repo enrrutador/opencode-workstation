@@ -1,5 +1,5 @@
 # ============================================================
-# OpenCode Workstation on Kaggle — v11 (una sola celda)
+# OpenCode Workstation on Kaggle — v11.1 (una sola celda)
 # ============================================================
 # v11: igual a v10 pero SIN los parches base64. La v10 escribia
 # persistence.py / checkpoint.py / bootstrap.py desde blobs de
@@ -43,7 +43,7 @@ PORT = 4096
 
 
 log("=" * 60)
-log("OpenCode Workstation v11")
+log("OpenCode Workstation v11.1")
 log("=" * 60)
 
 
@@ -65,7 +65,11 @@ except Exception as e:
 
 
 if not os.environ.get("NVIDIA_API_KEY"):
-    raise RuntimeError("Falta secret NVIDIA_API_KEY")
+    # El bootstrap trata NVIDIA_API_KEY como OPCIONAL (arranca sin
+    # modelos NVIDIA). La v10/v11 abortaba aca y dejaba la
+    # workstation sin arrancar por un secret no adjuntado.
+    log("AVISO: sin secret NVIDIA_API_KEY - arranco igual, sin modelos NVIDIA")
+    log("       Adjuntarlo despues: Add-ons > Secrets, etiqueta exacta NVIDIA_API_KEY")
 os.environ["OPENCODE_CLOUD_DATASET"] = DATASET_ID
 log("Dataset:", DATASET_ID)
 
